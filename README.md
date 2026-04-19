@@ -12,13 +12,19 @@ A lightweight and powerful CLI tool written in Rust to manage and run multiple G
 
 ## 📥 Installation
 
+### Option 1: Direct from GitHub (Recommended)
+Run this command to install it directly without cloning:
+```bash
+cargo install --git https://github.com/TadeoOrtiz/godot-manager.git
+```
+
+### Option 2: From Source
 1. Ensure you have [Rust](https://www.rust-lang.org/) installed.
 2. Clone this repository.
 3. Install the binary:
    ```bash
    cargo install --path .
    ```
-   *This will add the `godot` command to your path.*
 
 ## 🛠 Usage
 
