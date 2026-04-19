@@ -61,7 +61,8 @@ fn get_styles() -> Styles {
     version = "1.0.0",
     styles = get_styles(),
     help_template = "{before-help}{name} {version}\n{about-with-newline}\n{usage-heading} {usage}\n\n{all-args}{after-help}",
-    override_usage = "godot [mgr] [COMMAND] | godot [GODOT_ARGS]"
+    override_usage = "godot [mgr] [COMMAND] | godot [GODOT_ARGS]",
+    disable_help_subcommand = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -73,7 +74,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(alias = "m", override_usage = "godot mgr <COMMAND>")]
+    #[command(
+        alias = "m",
+        override_usage = "godot mgr <COMMAND>",
+        disable_help_subcommand = true
+    )]
     Mgr {
         #[command(subcommand)]
         subcommand: MgrCommands,
