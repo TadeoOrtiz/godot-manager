@@ -43,7 +43,6 @@ fn get_config_path() -> Result<PathBuf> {
     Ok(proj_dirs.config_dir().join("config.toml"))
 }
 
-// Define custom styles for the help output
 fn get_styles() -> Styles {
     Styles::styled()
         .header(AnsiColor::Yellow.on_default() | Effects::BOLD)
@@ -67,18 +66,13 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Arguments to pass to Godot (if not using a management command)
     #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
     args: Vec<String>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Management commands (add, list, default, remove)
-    #[command(
-        alias = "m",
-        override_usage = "godot mgr <COMMAND>"
-    )]
+    #[command(alias = "m", override_usage = "godot mgr <COMMAND>")]
     Mgr {
         #[command(subcommand)]
         subcommand: MgrCommands,
@@ -87,28 +81,29 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum MgrCommands {
-    /// Add a new Godot version
-    Add {
-        /// Name of the version (e.g., 4.3-dev5)
-        name: String,
-        /// Path to the Godot executable
-        path: PathBuf,
-    },
-    /// List all registered versions
+    Add { name: String, path: PathBuf },
     List,
-    /// Set a default Godot version
-    Default {
-        /// Name of the version to set as default
-        name: String,
-    },
-    /// Remove a registered version
-    Remove {
-        /// Name of the version to remove
-        name: String,
-    },
+    Default { name: String },
+    Remove { name: String },
 }
 
+use update_informer::Check;
+
 fn main() -> Result<()> {
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    let repo = "https://github.com/TadeoOrtiz/godot-manager.git";
+
+    let informer = update_informer::new(update_informer::registry::GitHub, repo, version);
+    if let Some(new_version) = informer.check_version().ok().flatten() {
+        println!("\n\x1b[1;33m┌────────────────────────────────────────────────────────┐\x1b[0m");
+        println!("\x1b[1;33m│\x1b[0m  🚀 A new version of \x1b[1;36m{}\x1b[0m is available!         \x1b[1;33m│\x1b[0m", name);
+        println!("\x1b[1;33m│\x1b[0m  \x1b[1;30m{}\x1b[0m → \x1b[1;32m{}\x1b[0m                                \x1b[1;33m│\x1b[0m", version, new_version);
+        println!("\x1b[1;33m│\x1b[0m                                                        \x1b[1;33m│\x1b[0m");
+        println!("\x1b[1;33m│\x1b[0m  Run: \x1b[1;36mcargo install --git https://github.com/{}\x1b[0m \x1b[1;33m│\x1b[0m", repo);
+        println!("\x1b[1;33m└────────────────────────────────────────────────────────┘\x1b[0m\n");
+    }
+
     let cli = Cli::parse();
     let mut config = Config::load()?;
 
@@ -129,7 +124,10 @@ fn main() -> Result<()> {
                     for (name, path) in &config.versions {
                         let is_default = config.default.as_ref() == Some(name);
                         if is_default {
-                            println!("  \x1b[32m* \x1b[1m{}\x1b[0m -> \x1b[3m{:?}\x1b[0m", name, path);
+                            println!(
+                                "  \x1b[32m* \x1b[1m{}\x1b[0m -> \x1b[3m{:?}\x1b[0m",
+                                name, path
+                            );
                         } else {
                             println!("    \x1b[1m{}\x1b[0m -> \x1b[3m{:?}\x1b[0m", name, path);
                         }
@@ -140,9 +138,15 @@ fn main() -> Result<()> {
                 if config.versions.contains_key(&name) {
                     config.default = Some(name.clone());
                     config.save()?;
-                    println!("\x1b[32m✔\x1b[0m Default version set to: \x1b[1;36m{}\x1b[0m", name);
+                    println!(
+                        "\x1b[32m✔\x1b[0m Default version set to: \x1b[1;36m{}\x1b[0m",
+                        name
+                    );
                 } else {
-                    return Err(anyhow!("\x1b[31mError: Version '{}' not found\x1b[0m", name));
+                    return Err(anyhow!(
+                        "\x1b[31mError: Version '{}' not found\x1b[0m",
+                        name
+                    ));
                 }
             }
             MgrCommands::Remove { name } => {
@@ -151,14 +155,19 @@ fn main() -> Result<()> {
                         config.default = None;
                     }
                     config.save()?;
-                    println!("\x1b[32m✔\x1b[0m Removed version: \x1b[1;31m{}\x1b[0m", name);
+                    println!(
+                        "\x1b[32m✔\x1b[0m Removed version: \x1b[1;31m{}\x1b[0m",
+                        name
+                    );
                 } else {
-                    return Err(anyhow!("\x1b[31mError: Version '{}' not found\x1b[0m", name));
+                    return Err(anyhow!(
+                        "\x1b[31mError: Version '{}' not found\x1b[0m",
+                        name
+                    ));
                 }
             }
         },
         None => {
-            // Check if the first argument looks like a misspelled management command
             if let Some(first_arg) = cli.args.first() {
                 if first_arg == "mrg" || first_arg == "manager" {
                     println!("\x1b[31mError: Unknown command '{}'. Did you mean '\x1b[1;32mmgr\x1b[31m'?\x1b[0m", first_arg);
@@ -183,20 +192,25 @@ fn run_godot(config: &Config, args: Vec<String>) -> Result<()> {
     } else {
         let mut names: Vec<_> = config.versions.keys().cloned().collect();
         names.sort();
-        
+
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select Godot version")
             .items(&names)
             .default(0)
             .interact()?;
-        
+
         names[selection].clone()
     };
 
-    let path = config.versions.get(&version_name)
+    let path = config
+        .versions
+        .get(&version_name)
         .ok_or_else(|| anyhow!("Version '{}' not found", version_name))?;
 
-    println!("\x1b[34m🚀 Running Godot \x1b[1;36m{}\x1b[34m...\x1b[0m", version_name);
+    println!(
+        "\x1b[34m🚀 Running Godot \x1b[1;36m{}\x1b[34m...\x1b[0m",
+        version_name
+    );
 
     let mut child = Command::new(path)
         .args(args)
@@ -204,7 +218,7 @@ fn run_godot(config: &Config, args: Vec<String>) -> Result<()> {
         .with_context(|| format!("Failed to spawn Godot at {:?}", path))?;
 
     let status = child.wait()?;
-    
+
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
     }
