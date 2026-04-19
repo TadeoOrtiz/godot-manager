@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use update_informer::Check;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -57,7 +58,7 @@ fn get_styles() -> Styles {
     bin_name = "godot",
     display_name = "godot",
     about = "Godot Version Manager - Manage and run multiple Godot versions seamlessly",
-    version = "0.1.0",
+    version = "1.0.0",
     styles = get_styles(),
     help_template = "{before-help}{name} {version}\n{about-with-newline}\n{usage-heading} {usage}\n\n{all-args}{after-help}",
     override_usage = "godot [mgr] [COMMAND] | godot [GODOT_ARGS]"
@@ -81,18 +82,23 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum MgrCommands {
+    /// Add a new Godot version
     Add { name: String, path: PathBuf },
+    /// List all registered versions
     List,
-    Default { name: String },
+    /// Set a default Godot version
+    Default {
+        /// Name of the version to set as default (optional, shows menu if empty)
+        name: Option<String>,
+    },
+    /// Remove a registered version
     Remove { name: String },
 }
-
-use update_informer::Check;
 
 fn main() -> Result<()> {
     let name = env!("CARGO_PKG_NAME");
     let version = env!("CARGO_PKG_VERSION");
-    let repo = "https://github.com/TadeoOrtiz/godot-manager.git";
+    let repo = "TadeoOrtiz/godot-manager";
 
     let informer = update_informer::new(update_informer::registry::GitHub, repo, version);
     if let Some(new_version) = informer.check_version().ok().flatten() {
@@ -121,11 +127,14 @@ fn main() -> Result<()> {
                     println!("\x1b[33m⚠ No versions registered.\x1b[0m");
                 } else {
                     println!("\x1b[1;33mRegistered Godot versions:\x1b[0m");
-                    for (name, path) in &config.versions {
+                    let mut names: Vec<_> = config.versions.keys().collect();
+                    names.sort();
+                    for name in names {
+                        let path = &config.versions[name];
                         let is_default = config.default.as_ref() == Some(name);
                         if is_default {
                             println!(
-                                "  \x1b[32m* \x1b[1m{}\x1b[0m -> \x1b[3m{:?}\x1b[0m",
+                                "  \x1b[32m* \x1b[1m{}\x1b[0m \x1b[32m(default)\x1b[0m -> \x1b[3m{:?}\x1b[0m",
                                 name, path
                             );
                         } else {
@@ -135,17 +144,33 @@ fn main() -> Result<()> {
                 }
             }
             MgrCommands::Default { name } => {
-                if config.versions.contains_key(&name) {
-                    config.default = Some(name.clone());
+                let selected_name = if let Some(n) = name {
+                    n
+                } else {
+                    if config.versions.is_empty() {
+                        return Err(anyhow!("\x1b[33mNo versions available to set as default.\x1b[0m"));
+                    }
+                    let mut names: Vec<_> = config.versions.keys().cloned().collect();
+                    names.sort();
+                    let selection = Select::with_theme(&ColorfulTheme::default())
+                        .with_prompt("Select a version to set as default")
+                        .items(&names)
+                        .default(0)
+                        .interact()?;
+                    names[selection].clone()
+                };
+
+                if config.versions.contains_key(&selected_name) {
+                    config.default = Some(selected_name.clone());
                     config.save()?;
                     println!(
                         "\x1b[32m✔\x1b[0m Default version set to: \x1b[1;36m{}\x1b[0m",
-                        name
+                        selected_name
                     );
                 } else {
                     return Err(anyhow!(
                         "\x1b[31mError: Version '{}' not found\x1b[0m",
-                        name
+                        selected_name
                     ));
                 }
             }
